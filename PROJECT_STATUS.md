@@ -1,6 +1,6 @@
 # 🏴 LOCAL-MACHINE — COMPLETE PROJECT STATUS & CONTEXT
 
-> **Last Updated**: 2026-04-01
+> **Last Updated**: 2026-04-01 (Session 2 — fixed machines 01-03, building apps)
 > **Purpose**: Full context document so work can resume from any new conversation.
 > **Key Reference**: `implementation_plan.md` (723 lines) is the master blueprint.
 
@@ -110,9 +110,9 @@ A 42-machine, Docker-based penetration testing lab. Each machine is an isolated 
 
 | # | Name | CVE | Status | Config Files | What's Missing |
 |---|------|-----|--------|-------------|----------------|
-| 01 | Log4Hell | CVE-2021-44228 | 🟢 DEEP | 5 (VulnApp.java, vuln-reader.c, log4j2.xml, start-app.sh, entrypoint.sh) | Nothing — fully working |
-| 02 | SpringBreak | CVE-2022-22965 | 🟢 DEEP | 3 (entrypoint.sh, setup-cron.sh, vuln-app/README.md) | Needs actual Spring WAR file download in Dockerfile |
-| 03 | PathFinder | CVE-2021-41773 | 🟢 DEEP | 1 (entrypoint.sh) | Apache 2.4.49 source build is in Dockerfile. Needs httpd.conf |
+| 01 | Log4Hell | CVE-2021-44228 | 🟢 DEEP | 5 (VulnApp.java, vuln-reader.c, log4j2.xml, start-app.sh, entrypoint.sh) | ✅ Fixed: healthcheck rewritten, vuln-reader.c path traversal logic fixed, entrypoint self-copy removed |
+| 02 | SpringBreak | CVE-2022-22965 | 🟢 DEEP | 7 (entrypoint.sh, setup-cron.sh, VulnController.java, Employee.java, web.xml, dispatcher-servlet.xml, README.md) | ✅ Fixed: Dockerfile now downloads Spring 5.3.17 JARs, compiles & deploys WAR to Tomcat |
+| 03 | PathFinder | CVE-2021-41773 | 🟢 DEEP | 2 (entrypoint.sh, httpd.conf) | ✅ Fixed: Clean source-only Dockerfile, httpd.conf created with CGI+Require all granted, SUID file-reader binary |
 | 04 | StrutsZone | CVE-2017-5638 | 🟡 SCAFFOLDED | 1 (entrypoint.sh) | Needs setup.sh + start-service.sh |
 | 05 | ShellShocked | CVE-2014-6271 | 🟡 SCAFFOLDED | 1 | Needs setup.sh + start-service.sh |
 | 06 | PHPocalypse | CVE-2012-1823 | 🟡 SCAFFOLDED | 1 | Needs setup.sh + start-service.sh |
@@ -515,11 +515,11 @@ This is the gold standard. Every machine should follow this pattern:
 
 ## 9. KNOWN ISSUES & CLEANUP NEEDED
 
-1. **`scripts/machines/` directory**: The failed bash generator script (`generate-machines.sh`) created a duplicate directory at `scripts/machines/01_WebServer_Runtime/` with files for machines 04-07. This should be DELETED — it's orphaned output from the failed first attempt. The Python generator (`generate-machines.py`) worked correctly and wrote to the proper `machines/` paths.
+1. ~~**`scripts/machines/` directory**~~: ✅ RESOLVED — orphaned directory deleted.
 
-2. **Machine 02 (SpringBreak)**: Dockerfile references downloading a Tomcat 9.0.60 tarball and a `config/vuln-app/` directory. The vuln-app directory has only a README.md explaining the Spring WAR needs to be built. The actual WAR file download/build step needs to be added.
+2. ~~**Machine 02 (SpringBreak)**~~: ✅ RESOLVED — Dockerfile rewritten with Spring 5.3.17 JAR downloads, Java source compilation, WAR deployment to Tomcat webapps. Added VulnController.java, Employee.java, web.xml, dispatcher-servlet.xml.
 
-3. **Machine 03 (PathFinder)**: Dockerfile tries to install Apache 2.4.49 from apt first (which won't work), then falls back to source compilation. The fallback should work but the httpd.conf referenced in the COPY doesn't exist yet.
+3. ~~**Machine 03 (PathFinder)**~~: ✅ RESOLVED — Dockerfile rewritten as clean source-only build. httpd.conf created with CGI enabled and Require all granted. Entrypoint creates web content and log dirs.
 
 4. **Portal**: The server.js uses self-signed TLS certs from `/app/certs/` which are generated in the portal Dockerfile at build time. If certs fail, it falls back to HTTP.
 

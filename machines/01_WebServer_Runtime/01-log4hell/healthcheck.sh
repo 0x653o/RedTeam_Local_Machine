@@ -3,27 +3,39 @@
 # Machine 01: Log4Hell — Health Check
 # ──────────────────────────────────────────────────────
 
-source /opt/healthcheck-base.sh 2>/dev/null || {
-    # Inline fallback if base not available
-    check_port() { ss -tlnp | grep -q ":${1} " || exit 1; }
-    check_flag_files() { [ -f /root/root.txt ] && [ -f /home/user/user.txt ] || exit 1; }
-    exit_healthcheck() { exit 0; }
-}
+HEALTHY=true
 
 # 1. Java webapp listening on 8080
-check_port 8080 "Java Web Application"
+if ! ss -tlnp 2>/dev/null | grep -q ":8080 "; then
+    echo "[UNHEALTHY] Port 8080 not listening"
+    HEALTHY=false
+fi
 
-# 2. Vulnerability is exploitable (Log4j responds to JNDI lookup format)
-check_service_vuln \
-    "curl -s -o /dev/null -w '%{http_code}' -H 'X-Api-Version: test' http://localhost:8080/ | grep -q '200'" \
-    "Log4j web app responds"
+# 2. Web app responds to HTTP requests
+if ! curl -sf -o /dev/null -w '' http://localhost:8080/ 2>/dev/null; then
+    echo "[UNHEALTHY] Web app not responding on 8080"
+    HEALTHY=false
+fi
 
 # 3. Flag files exist
-check_flag_files
+if [ ! -f /root/root.txt ]; then
+    echo "[UNHEALTHY] Root flag missing"
+    HEALTHY=false
+fi
+if [ ! -f /home/user/user.txt ]; then
+    echo "[UNHEALTHY] User flag missing"
+    HEALTHY=false
+fi
 
-# 4. SUID binary exists
-check_service_vuln \
-    "test -u /usr/local/bin/vuln-reader" \
-    "SUID binary present"
+# 4. SUID binary exists and has SUID bit set
+if [ ! -u /usr/local/bin/vuln-reader ]; then
+    echo "[UNHEALTHY] SUID binary missing or not SUID"
+    HEALTHY=false
+fi
 
-exit_healthcheck
+if [ "$HEALTHY" = true ]; then
+    echo "[HEALTHY] All checks passed"
+    exit 0
+else
+    exit 1
+fi

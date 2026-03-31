@@ -22,10 +22,9 @@ echo "FLAG{${USER_FLAG}}" > /home/user/user.txt
 chown user:user /home/user/user.txt
 chmod 444 /home/user/user.txt
 
-# Copy healthcheck base if available
-if [ -f /opt/healthcheck-base.sh ]; then
-    cp /opt/healthcheck-base.sh /opt/healthcheck-base.sh
-fi
+# Ensure log directory is writable by appuser
+mkdir -p /var/log/webapp
+chown appuser:appuser /var/log/webapp
 
 # Create log directories
 mkdir -p /var/log/webapp

@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head><title>AcmeCorp Internal</title></head>
+<body>
+<h1>AcmeCorp Internal Portal</h1>
+<p>Theme: <%= settings.theme %></p>
+<p>Language: <%= settings.language %></p>
+<ul>
+  <li><a href="/profile">Profile</a></li>
+  <li><a href="/api/settings">Settings API</a></li>
+</ul>
+<h3>Update Settings</h3>
+<form id="settings-form">
+  <label>Theme:</label>
+  <input name="theme" value="<%= settings.theme %>"><br>
+  <label>Language:</label>
+  <input name="language" value="<%= settings.language %>"><br>
+  <button type="submit">Save</button>
+</form>
+<script>
+document.getElementById('settings-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    const data = Object.fromEntries(new FormData(this));
+    fetch('/api/settings', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)})
+    .then(r => r.json()).then(d => { alert('Settings saved!'); location.reload(); });
+});
+</script>
+</body>
+</html>
