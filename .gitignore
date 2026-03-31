@@ -1,0 +1,57 @@
+# ──────────────────────────────────────────────────────
+# Local-Machine — .gitignore
+# ──────────────────────────────────────────────────────
+
+# Environment files with secrets
+.env.local
+.env.production
+
+# Docker volumes and build artifacts
+docker-compose.override.yml
+*.tar.gz
+
+# Portal data (player progress)
+infra/portal/data/
+infra/portal/src/data/
+infra/portal/node_modules/
+
+# VPN configs (contain private keys)
+infra/vpn/config/peer_*/
+infra/vpn/config/wg0.conf
+infra/vpn/config/coredns/
+
+# Logs
+*.log
+/var/log/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Generated flags (regenerated at runtime)
+machines/**/flags/root.txt
+machines/**/flags/user.txt
+
+# Node
+node_modules/
+package-lock.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# TLS certificates
+*.pem
+*.key
+*.crt
+infra/portal/certs/

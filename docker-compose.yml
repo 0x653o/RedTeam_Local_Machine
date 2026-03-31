@@ -1,0 +1,84 @@
+# ──────────────────────────────────────────────────────
+# Local-Machine — Core Infrastructure
+# ──────────────────────────────────────────────────────
+# This compose file manages ONLY infrastructure services:
+#   - VPN Gateway (WireGuard)
+#   - Web Portal (Dashboard + Gamification)
+#
+# Machine compose files are separate, in machines/*/docker-compose.yml
+# ──────────────────────────────────────────────────────
+
+services:
+  # ── VPN Gateway ───────────────────────────────────
+  vpn:
+    image: linuxserver/wireguard:latest
+    container_name: lm-vpn
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    environment:
+      - PUID=1000
+      - PGID=1000
+      - TZ=UTC
+      - SERVERURL=auto
+      - SERVERPORT=${VPN_PORT:-51820}
+      - PEERS=player1,player2,player3
+      - PEERDNS=auto
+      - INTERNAL_SUBNET=${VPN_SUBNET:-10.10.254.0/24}
+    ports:
+      - "${VPN_PORT:-51820}:51820/udp"
+    volumes:
+      - ./infra/vpn/config:/config
+      - /lib/modules:/lib/modules:ro
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+      - net.ipv4.ip_forward=1
+    networks:
+      infra_net:
+        ipv4_address: 10.10.0.2
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wg show wg0 2>/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  # ── Web Portal ────────────────────────────────────
+  portal:
+    build:
+      context: ./infra/portal
+      dockerfile: Dockerfile
+    container_name: lm-portal
+    environment:
+      - PORTAL_SECRET=${PORTAL_SECRET:-change-me}
+      - FLAG_SEED=${FLAG_SEED:-default-seed}
+      - TOTAL_MACHINES=${TOTAL_MACHINES:-42}
+    ports:
+      - "${PORTAL_PORT:-8443}:8443"
+    volumes:
+      - ./infra/portal/src:/app/src:ro
+      - portal_data:/app/data
+    networks:
+      infra_net:
+        ipv4_address: 10.10.0.3
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsk https://localhost:8443/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    depends_on:
+      vpn:
+        condition: service_healthy
+
+networks:
+  infra_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 10.10.0.0/24
+          gateway: 10.10.0.1
+
+volumes:
+  portal_data:
+    driver: local

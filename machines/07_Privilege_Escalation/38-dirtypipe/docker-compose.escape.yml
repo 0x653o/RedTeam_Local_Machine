@@ -1,0 +1,12 @@
+# Machine 38: DirtyPipe — cgroup Escape Override (CVE-2022-0492)
+# ONLY used with --enable-escape-challenges
+# Weakens cgroup settings for escape practice
+
+services:
+  dirtypipe:
+    security_opt:
+      - apparmor:unconfined
+    cap_add:
+      - SYS_ADMIN
+    environment:
+      - ESCAPE_ENABLED=true

@@ -1,0 +1,18 @@
+services:
+  jenkinsowned:
+    build: { context: ., dockerfile: Dockerfile }
+    container_name: lm-23-jenkinsowned
+    hostname: jenkinsowned
+    environment: [ "FLAG_SEED=${FLAG_SEED:-default-seed}", "MACHINE_ID=23" ]
+    networks: { machine_23_net: { ipv4_address: 10.10.23.10 } }
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    security_opt: [ "no-new-privileges:false" ]
+    healthcheck: { test: ["CMD-SHELL", "/healthcheck.sh"], interval: 30s, timeout: 10s, retries: 3, start_period: 60s }
+
+networks:
+  machine_23_net:
+    driver: bridge
+    ipam: { config: [{ subnet: 10.10.23.0/24, gateway: 10.10.23.1 }] }

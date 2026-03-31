@@ -1,0 +1,9 @@
+# Machine 21: WebLogicBmb — Privileged Container Escape Override
+# ONLY used with --enable-escape-challenges
+# This runs the container in privileged mode for escape practice
+
+services:
+  weblogicbmb:
+    privileged: true
+    environment:
+      - ESCAPE_ENABLED=true

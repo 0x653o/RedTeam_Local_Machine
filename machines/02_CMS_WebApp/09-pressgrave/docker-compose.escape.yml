@@ -1,0 +1,10 @@
+# Machine 09: PressGrave — Docker Socket Escape Override
+# ONLY used with --enable-escape-challenges
+# This adds the Docker socket mount for container escape practice
+
+services:
+  pressgrave:
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    environment:
+      - ESCAPE_ENABLED=true

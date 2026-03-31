@@ -1,0 +1,18 @@
+services:
+  bigipwned:
+    build: { context: ., dockerfile: Dockerfile }
+    container_name: lm-29-bigipwned
+    hostname: bigipwned
+    environment: [ "FLAG_SEED=${FLAG_SEED:-default-seed}", "MACHINE_ID=29" ]
+    networks: { machine_29_net: { ipv4_address: 10.10.29.10 } }
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    security_opt: [ "no-new-privileges:false" ]
+    healthcheck: { test: ["CMD-SHELL", "/healthcheck.sh"], interval: 30s, timeout: 10s, retries: 3, start_period: 60s }
+
+networks:
+  machine_29_net:
+    driver: bridge
+    ipam: { config: [{ subnet: 10.10.29.0/24, gateway: 10.10.29.1 }] }

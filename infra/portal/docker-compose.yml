@@ -1,0 +1,33 @@
+# ──────────────────────────────────────────────────────
+# Local-Machine — Web Portal
+# ──────────────────────────────────────────────────────
+# Standalone compose file for the portal.
+# Used by run.sh to manage the portal independently.
+# ──────────────────────────────────────────────────────
+
+services:
+  portal:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: lm-portal
+    environment:
+      - PORTAL_SECRET=${PORTAL_SECRET:-change-me}
+      - FLAG_SEED=${FLAG_SEED:-default-seed}
+      - TOTAL_MACHINES=${TOTAL_MACHINES:-42}
+    ports:
+      - "${PORTAL_PORT:-8443}:8443"
+    volumes:
+      - ./src:/app/src:ro
+      - portal_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsk https://localhost:8443/api/health || curl -fs http://localhost:8443/api/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  portal_data:
+    driver: local

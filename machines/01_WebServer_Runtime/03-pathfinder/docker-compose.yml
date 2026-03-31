@@ -1,0 +1,18 @@
+services:
+  pathfinder:
+    build: { context: ., dockerfile: Dockerfile }
+    container_name: lm-03-pathfinder
+    hostname: pathfinder
+    environment: [ "FLAG_SEED=${FLAG_SEED:-default-seed}", "MACHINE_ID=03" ]
+    networks: { machine_03_net: { ipv4_address: 10.10.3.10 } }
+    restart: unless-stopped
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    security_opt: [ "no-new-privileges:false" ]
+    healthcheck: { test: ["CMD-SHELL", "/healthcheck.sh"], interval: 30s, timeout: 10s, retries: 3, start_period: 30s }
+
+networks:
+  machine_03_net:
+    driver: bridge
+    ipam: { config: [{ subnet: 10.10.3.0/24, gateway: 10.10.3.1 }] }

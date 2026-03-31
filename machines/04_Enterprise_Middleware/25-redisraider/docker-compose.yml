@@ -1,0 +1,18 @@
+services:
+  redisraider:
+    build: { context: ., dockerfile: Dockerfile }
+    container_name: lm-25-redisraider
+    hostname: redisraider
+    environment: [ "FLAG_SEED=${FLAG_SEED:-default-seed}", "MACHINE_ID=25" ]
+    networks: { machine_25_net: { ipv4_address: 10.10.25.10 } }
+    restart: unless-stopped
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 256
+    security_opt: [ "no-new-privileges:false" ]
+    healthcheck: { test: ["CMD-SHELL", "/healthcheck.sh"], interval: 30s, timeout: 10s, retries: 3, start_period: 60s }
+
+networks:
+  machine_25_net:
+    driver: bridge
+    ipam: { config: [{ subnet: 10.10.25.0/24, gateway: 10.10.25.1 }] }

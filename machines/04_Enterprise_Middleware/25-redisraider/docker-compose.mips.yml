@@ -1,0 +1,13 @@
+# Machine 25: RedisRaider — MIPS Multi-Architecture Override
+# Requires qemu-user-static on host
+# Usage: docker compose -f docker-compose.yml -f docker-compose.mips.yml up -d
+
+services:
+  redisraider:
+    platform: linux/mips64le
+    build:
+      context: .
+      dockerfile: Dockerfile.mips
+    environment:
+      - ARCH=mips
+      - BONUS_FLAG=true

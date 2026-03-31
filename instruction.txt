@@ -1,0 +1,1 @@
+Read PROJECT_STATUS.md and continue building machines
