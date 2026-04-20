@@ -1,8 +1,9 @@
-# 🏴 Local-Machine — Advanced Red Team Lab
+# 🏴 Local-Machine — Self-Hosted Red Team Training Platform
 
-> **42 isolated, multi-step challenge machines** built on critical/high-severity CVEs.
-> Each machine enforces a realistic **MITRE ATT&CK kill chain** where every step is a hard dependency for the next.
-> Inspired by **DEFCON CTF Finals, HITCON CTF Finals, BlackHat CTF Finals**.
+> A **HackTheBox-style server platform** you deploy on your own dedicated server.
+> Players register on the web portal, download their personal `.ovpn` file, connect once, and get full access to **42 isolated challenge machines** built on real Critical/High CVEs.
+> Designed for **red team learners** who need a safe, unrestricted environment — run `nmap`, brute-force, deploy tools freely. No rate limits, no bans.
+> Each machine enforces a realistic **MITRE ATT&CK kill chain** inspired by **DEFCON CTF Finals, HITCON CTF Finals, BlackHat CTF Finals**.
 
 ---
 
@@ -29,10 +30,12 @@
 
 | Principle | Description |
 |-----------|-------------|
-| **Cogwheel Chaining** | Every CVE exploit is a gear — it only turns if the previous gear moved. No step can be skipped. Flags are gated behind sequential exploitation. |
+| **Hosted Server Platform** | This is a **server you run**, not a local-only tool. Players access it remotely via OpenVPN, exactly like HackTheBox. The admin deploys it on a dedicated server with a public IP. |
+| **Unrestricted Practice** | Players can run `nmap -A`, `hydra`, `sqlmap`, `metasploit` without throttling, bans, or rate limits. The whole point is learning by doing — freely. |
+| **Per-User Isolation (Kubernetes)** | Each registered user gets their own Kubernetes namespace acting as a private VM. Only one machine runs per user at a time, keeping resource usage flat regardless of user count. |
+| **Cogwheel Chaining** | Every CVE exploit is a gear — it only turns if the previous gear moved. Flags are gated behind sequential exploitation. No step can be skipped. |
 | **MITRE ATT&CK Mapping** | Every machine maps to specific ATT&CK Tactics/Techniques. The full lab covers the entire framework. |
 | **Real-World Severity** | Only **Critical (9.0+)** or **High (7.0+)** CVEs from real advisories. No toy vulnerabilities. |
-| **Creative Intrusion** | Players must *think laterally* — chain CVEs in non-obvious ways. Inspired by top-tier CTF finals where the "how" matters more than the "what". |
 | **Open Source Ready** | Every machine includes detailed writeups, exploit code, and educational context. Anyone can learn from it. |
 
 ### 1.2 Kill Chain Enforcement Model
@@ -80,59 +83,439 @@ The 42 machines collectively cover the **entire** MITRE ATT&CK framework:
 
 ## 3. Architecture & Isolation Model
 
-### 3.1 Network Topology
+### 3.1 System Overview
 
 ```
-                    ┌──────────────────────────────────┐
-                    │         HOST MACHINE             │
-                    │                                  │
-  Player VPN ──────▶│  ┌──────────┐  ┌──────────────┐  │
-  (WireGuard)       │  │ VPN GW   │  │  Web Portal  │  │
-                    │  │ 10.10.0.2│  │  10.10.0.3   │  │
-                    │  └────┬─────┘  └──────────────┘  │
-                    │       │    infra_net 10.10.0.0/24 │
-                    │       │                          │
-                    │  ┌────┴────────────────────────┐ │
-                    │  │      Docker Bridge Router    │ │
-                    │  └────┬───┬───┬───┬───┬───┬──┘  │
-                    │       │   │   │   │   │   │      │
-                    │   ┌───┘ ┌─┘ ┌─┘ ┌─┘ ┌─┘ ┌─┘     │
-                    │   ▼     ▼   ▼   ▼   ▼   ▼       │
-                    │  m01  m02 m03 ... m40  m41       │
-                    │ .1.0  .2.0 .3.0    .40.0 .41.0  │
-                    │  /24   /24  /24     /24   /24    │
-                    └──────────────────────────────────┘
+  Player Browser
+       │
+       ▼
+  ┌─────────────────────────────────────────────────────────┐
+  │               PUBLIC SERVER (dedicated IP)              │
+  │                                                         │
+  │  ┌────────────────────┐   ┌────────────────────────┐   │
+  │  │    Web Portal      │   │   OpenVPN Gateway      │   │
+  │  │  register / login  │   │   udp://<IP>:1194      │   │
+  │  │  profile + .ovpn   │   │   per-user cert (PKI)  │   │
+  │  │  dashboard / flags │   └────────────┬───────────┘   │
+  │  └────────────────────┘                │               │
+  │                                        ▼               │
+  │              ┌─────────────────────────────────────┐   │
+  │              │       Kubernetes Cluster (k3s)       │   │
+  │              │                                     │   │
+  │              │  ns:user-alice    ns:user-bob  ...  │   │
+  │              │  ┌───────────┐  ┌───────────┐      │   │
+  │              │  │ log4hell  │  │ log4hell  │      │   │
+  │              │  │ Pod+Svc   │  │ Pod+Svc   │      │   │
+  │              │  │10.42.0.31 │  │10.42.0.47 │      │   │
+  │              │  └───────────┘  └───────────┘      │   │
+  │              └─────────────────────────────────────┘   │
+  └─────────────────────────────────────────────────────────┘
+
+  alice sees: "Log4Hell — 10.42.0.31"   (portal reads live Pod IP)
+  bob   sees: "Log4Hell — 10.42.0.47"   (portal reads live Pod IP)
+  → same machine, fully separate containers, different IPs
 ```
 
-### 3.2 Isolation Rules
+### 3.2 IP Assignment Model — Dynamic Pod IP
+
+**Design choice: Dynamic Pod IP, portal-driven display.**
+
+Each machine Pod gets a **dynamically assigned cluster IP** from k8s. The portal backend reads the live IP after Spawn and stores it in the session. The user sees their specific IP on the dashboard — no fixed IP convention needed.
+
+**Why this is better than a fixed-IP scheme:**
+
+| | Dynamic Pod IP ✅ | Fixed ClusterIP (10.10.x.x) |
+|--|-------------------|-----------------------------|
+| **IP conflict risk** | Zero — k8s assigns unique IPs | Requires per-namespace subnet tricks |
+| **Routing complexity** | None — VPN NetworkPolicy isolates by namespace | Need per-user VPN route pushed per machine |
+| **Resource overhead** | Pod only (no extra Service per user) | Pod + ClusterIP Service + routing rule per user |
+| **Recovery** | Delete Pod → recreate → new IP auto-displayed | Must also update Service selector + route |
+| **50 users, same machine** | 50 Pods, 50 different IPs, zero config | 50 identical 10.10.1.10 in 50 namespaces — routing nightmares |
+
+**How it works in practice:**
+
+```
+alice clicks "Spawn" on Log4Hell
+  → backend: kubectl apply pod/lm-alice-log4hell -n user-alice
+  → k8s assigns: Pod IP 10.42.0.31
+  → backend: stores {user: alice, machine: log4hell, ip: 10.42.0.31} in DB
+  → portal shows alice: "Log4Hell is running — 10.42.0.31"
+
+bob clicks "Spawn" on Log4Hell (simultaneously)
+  → backend: kubectl apply pod/lm-bob-log4hell -n user-bob
+  → k8s assigns: Pod IP 10.42.0.47
+  → portal shows bob: "Log4Hell is running — 10.42.0.47"
+
+NetworkPolicy ensures:
+  alice's VPN traffic → only reaches ns:user-alice (10.42.0.31)
+  bob's VPN traffic   → only reaches ns:user-bob   (10.42.0.47)
+  → zero cross-contamination, no possibility of alice hitting bob's machine
+```
+
+### 3.3 Refresh-to-Fix Recovery
+
+**Any issue is resolved by refreshing the page.** The portal health-check loop handles this automatically:
+
+```
+On every dashboard page load:
+  backend checks: is user's active Pod in Running/Ready state?
+
+  ├── Yes, Running → display IP as-is
+  ├── Pending     → show "Starting..." spinner, poll every 3s
+  ├── CrashLoop / Error → auto-delete + auto-respawn, show "Recovering..."
+  └── Not found (pod gone) → auto-respawn silently, update IP in DB
+
+Result: user refreshes → sees new IP → continues hacking
+```
+
+This means:
+- **No manual intervention** needed from admin for crashed machines
+- **No stale IP** shown — portal always reads live state from k8s API
+- **"Respawn" button** also available on dashboard for manual trigger
+
+### 3.4 Per-User Isolation (Kubernetes Namespaces)
+
+Each registered player gets a dedicated Kubernetes namespace. Within it:
+- Only **one machine Pod runs at a time** — switching machines deletes the previous Pod first
+- **50 users = max 50 active Pods** — resource usage is flat regardless of how many machines exist
+- **NetworkPolicy** ensures each user's VPN traffic can only reach Pods in their own namespace
+- Ephemeral storage only — no persistent state leaks between sessions
+
+```
+User switches machine:
+  [alice spawns log4hell]   → Pod lm-alice-log4hell (10.42.0.31) in ns:user-alice
+  [alice switches ghostcat] → lm-alice-log4hell DELETED, lm-alice-ghostcat (10.42.0.52) starts
+  [bob spawns log4hell]     → Pod lm-bob-log4hell (10.42.0.47) in ns:user-bob — no relation to alice's
+```
+
+### 3.5 Isolation Rules
 
 | Rule | Implementation |
 |------|---------------|
-| **Network** | Each machine gets its own Docker bridge network (`10.10.{N}.0/24`). No inter-machine communication. |
-| **Storage** | No shared volumes. Each machine has its own ephemeral storage. |
-| **Process** | `--pid=host` is **never** used. Each container has its own PID namespace. |
-| **Capability** | Minimal `cap_add`. Only machines requiring kernel exploits (35–37) get `SYS_PTRACE`. |
-| **Secrets** | Flags are generated at build time via `FLAG_SEED` env var + machine ID hash. |
+| **Network** | `NetworkPolicy`: each user namespace is default-deny; only their VPN IP is allowed in |
+| **Single active machine** | Portal backend deletes existing Pod before creating new one (atomic) |
+| **Storage** | All machine storage is `emptyDir` — wiped when Pod dies, never shared |
+| **Process** | `--pid=host` never used. Each Pod has its own PID namespace. |
+| **Capability** | Minimal `securityContext`. Kernel exploit machines get `SYS_PTRACE` only. |
+| **Flags** | Unique per user per machine: `sha256(FLAG_SEED + USER_ID + MACHINE_ID)` |
+| **IP isolation** | Dynamic Pod IPs + namespace NetworkPolicy = zero routing collision risk |
 
-### 3.3 Deployment Modes
+### 3.6 Infrastructure Stack
 
-| Mode | Target | Details |
-|------|--------|---------|
-| **Local** | Developer laptop | `docker compose up` — direct access via Docker IPs |
-| **Homelab/VPS** | Self-hosted server | VPN container exposes single UDP port; players connect via WireGuard |
-| **School Server** | Restricted NAT | See `docs/school_server_deploy/` for two architecture options |
+| Component | Technology | Role |
+|-----------|------------|------|
+| **Orchestrator** | k3s (lightweight Kubernetes) | Runs all user machine Pods |
+| **VPN** | OpenVPN (`kylemanna/openvpn`) | Players connect with `.ovpn` file |
+| **Web Portal** | Next.js (frontend) + FastAPI (backend) | Registration, OVPN download, Spawn, dashboard |
+| **Admin CLI** | `run.sh` | Start/stop/reset/status from terminal |
+| **Admin Dashboard** | Portal `/admin` panel | Live Pod view, user management, flag log |
+| **Lifecycle Manager** | Kubernetes CronJob + controller | Auto-reset (60 min), health-check, Pod cleanup |
+| **Database** | PostgreSQL | Users, sessions, active Pod IPs, flag submissions |
 
-#### School Server — Option 1: Open Port Allowed
-- WireGuard container bound to single allowed UDP port
-- Admin-configured peer keys
+### 3.7 Player Flow (End-to-End)
 
-#### School Server — Option 2: Outbound-Only
-- Tailscale for admin management
-- Cloudflare Tunnel or custom egress proxy for player access
+```
+1. Visit https://<server-ip>:8443
+2. Register (username + email) → account created, namespace provisioned in k8s
+3. Profile page → click "Download VPN" → get username.ovpn
+4. Run:  sudo openvpn username.ovpn   (one command, stays connected forever)
+5. Dashboard → pick a machine → click "Spawn"
+6. Backend: creates Pod in ns:user-<name>, reads assigned IP, stores in DB
+7. Dashboard shows: "Log4Hell running — 10.42.0.31"  → start hacking
+8. If machine breaks: refresh page → portal detects crash → auto-respawns
+9. Submit flags → earn points / rank up
+10. Switch machine → old Pod deleted, new Pod spawned, new IP shown
+```
+
 
 ---
 
+### 3.6 Deployment Environment Configurations
+
+The platform runs identically across all environments — only the **network exposure method** differs. Choose your scenario below.
+
+---
+
+#### 🖥️ Scenario A — Local Development (Your Laptop / Single Machine)
+
+**Use this when:** You are testing or building machines yourself, not hosting for other people.
+
+**What works:** Everything runs locally. No VPN needed — you access machines directly via their k8s cluster IP.
+
+**Setup:**
+
+```bash
+# 1. Install k3s (local mode)
+curl -sfL https://get.k3s.io | sh -
+
+# 2. Skip OpenVPN entirely — you're already inside the cluster network
+#    Access the portal directly
+open http://localhost:8443
+
+# 3. Start the portal stack
+cd infra/portal && docker compose up -d
+
+# 4. Spawn a machine (machines run as Pods in your local k3s)
+./run.sh spawn 01-log4hell --user localdev
+
+# 5. Access machine directly by cluster IP
+kubectl get pod -n user-localdev -o wide   # → shows Pod IP, e.g. 10.42.0.x
+nmap -sC -sV 10.42.0.x
+```
+
+**`.env` settings:**
+```bash
+SERVER_IP=127.0.0.1
+VPN_PORT=1194
+PORTAL_PORT=8443
+ENABLE_VPN=false          # Skip OpenVPN in local mode
+K8S_CONTEXT=default       # k3s default context
+```
+
+> **Note**: In local mode, the VPN container is optional. You interact with machines via `kubectl port-forward` or direct Pod IPs. This is for development only — not for hosting other players.
+
+---
+
+#### 🏠 Scenario B — Homelab / VPS (Dedicated IP, You Control the Router)
+
+**Use this when:** You have a dedicated server at home or a VPS with a real public IP, and you want external players to connect.
+
+**Requirements:** Public static/dedicated IP, ability to open UDP 1194 on your firewall.
+
+**Setup:**
+
+```bash
+# 1. Set your public IP in .env
+echo "SERVER_IP=123.45.67.89" >> .env    # ← your real public IP
+echo "VPN_PORT=1194" >> .env
+
+# 2. Install k3s
+curl -sfL https://get.k3s.io | sh -
+
+# 3. Initialize OpenVPN CA (one-time)
+./infra/vpn/setup-ca.sh
+# → PKI created, OpenVPN server started on UDP 1194
+
+# 4. Open firewall
+sudo ufw allow 1194/udp
+sudo ufw allow 8443/tcp   # portal HTTPS
+sudo ufw reload
+
+# 5. Start the portal
+cd infra/portal && docker compose up -d
+
+# 6. Register first admin account via portal
+open https://123.45.67.89:8443
+
+# 7. Add players
+./scripts/add-peer.sh alice    # → infra/vpn/players/alice.ovpn
+./scripts/add-peer.sh bob      # → infra/vpn/players/bob.ovpn
+# Send them the .ovpn file
+```
+
+**Router port forwarding** (if server is behind NAT):
+| Protocol | External Port | Internal IP | Internal Port |
+|----------|-------------|-------------|---------------|
+| UDP | 1194 | `<your-server-LAN-ip>` | 1194 |
+| TCP | 8443 | `<your-server-LAN-ip>` | 8443 |
+
+**`.env` settings:**
+```bash
+SERVER_IP=123.45.67.89    # your dedicated/public IP
+VPN_PORT=1194
+PORTAL_PORT=8443
+ENABLE_VPN=true
+K8S_CONTEXT=default
+FLAG_SEED=<random-32-char-string>
+PORTAL_SECRET=<random-16-char-string>
+```
+
+**Player side (nothing extra needed):**
+```bash
+sudo openvpn alice.ovpn   # connects instantly, done
+# Then open https://123.45.67.89:8443
+```
+
+---
+
+#### 🏫 Scenario C — School Server, Open Port Allowed
+
+**Use this when:** You are hosting on a school/university server where the network admin allows you to open **one UDP port** (typically 1194 or a custom one).
+
+**Requirements:** Ask your network admin to:
+1. Assign your server a **static internal IP** (e.g. `192.168.1.50`)
+2. Forward **UDP port `<approved_port>`** from the campus edge router to your server's internal IP
+
+**Setup:**
+
+```bash
+# 1. Find out which port was approved, e.g. UDP 51820 or 1194
+APPROVED_PORT=51820   # ← use whatever port admin approved
+
+# 2. Configure .env
+cat >> .env << EOF
+SERVER_IP=<campus-public-ip>   # the IP that external players resolve
+VPN_PORT=${APPROVED_PORT}
+PORTAL_PORT=8443
+ENABLE_VPN=true
+EOF
+
+# 3. Install k3s
+curl -sfL https://get.k3s.io | sh -
+
+# 4. Initialize OpenVPN CA with the approved port
+./infra/vpn/setup-ca.sh
+# setup-ca.sh reads SERVER_IP and VPN_PORT from .env automatically
+
+# 5. Open the port on the server's local firewall
+sudo ufw allow ${APPROVED_PORT}/udp
+sudo ufw allow 8443/tcp
+sudo ufw reload
+
+# 6. Also add iptables routing from VPN subnet to k8s Pod network
+sudo iptables -A FORWARD -s 10.8.0.0/24 -d 10.42.0.0/16 -j ACCEPT
+sudo iptables -A FORWARD -s 10.42.0.0/16 -d 10.8.0.0/24 -m state --state ESTABLISHED,RELATED -j ACCEPT
+sudo iptables-save > /etc/iptables/rules.v4   # persist across reboot
+
+# 7. Start portal & add peers normally
+cd infra/portal && docker compose up -d
+./scripts/add-peer.sh student01
+./scripts/add-peer.sh student02
+```
+
+**Network flow:**
+```
+Student laptop
+    │  sudo openvpn student01.ovpn
+    ▼
+Campus Edge Router (UDP <APPROVED_PORT> forwarded)
+    ▼
+Your Server (192.168.1.50)
+    ▼
+OpenVPN Container → k8s Pod (machine)
+```
+
+**`.env` settings:**
+```bash
+SERVER_IP=<campus-public-ip>   # NOT the server's LAN IP — the external-facing IP
+VPN_PORT=51820                 # or whatever was approved
+PORTAL_PORT=8443
+ENABLE_VPN=true
+FLAG_SEED=<random>
+```
+
+> **Tip**: If the campus web proxy blocks HTTPS on port 8443, ask admin to also forward TCP 443 → 8443, then set `PORTAL_PORT=443`.
+
+---
+
+#### 🔒 Scenario D — School Server, Outbound-Only (No Open Inbound Ports)
+
+**Use this when:** The school firewall blocks **all inbound connections**. Only outbound traffic is allowed. This is the hardest case but solvable with a reverse tunnel.
+
+**Strategy:** Use **Tailscale** (free, no open ports required) for the VPN tunnel, and **Cloudflare Tunnel** (free) for the web portal HTTPS access.
+
+```
+Student laptop
+    │  tailscale up  (outbound connection to Tailscale relay)
+    │
+    ▼
+Tailscale Network (relay-based, no open ports needed)
+    │
+    ▼
+Your School Server  ←──── Tailscale daemon (outbound-initiated)
+    │
+    ├── k8s Pods (machines)
+    └── Portal (via Cloudflare Tunnel → public HTTPS URL)
+```
+
+**Setup (Server side):**
+
+```bash
+# 1. Install Tailscale on the server
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+# → note the Tailscale IP, e.g. 100.64.0.10
+
+# 2. Install Cloudflare Tunnel (cloudflared) for the web portal
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
+sudo dpkg -i cloudflared-linux-amd64.deb
+
+# Authenticate with your Cloudflare account
+cloudflared tunnel login
+
+# Create a named tunnel
+cloudflared tunnel create local-machine-portal
+
+# Route portal traffic through the tunnel
+cloudflared tunnel route dns local-machine-portal lab.yourdomain.com
+
+# Start tunnel (portal on port 8443 → public HTTPS)
+cloudflared tunnel run --url https://localhost:8443 local-machine-portal &
+
+# 3. Install k3s (no special config needed — it's internal)
+curl -sfL https://get.k3s.io | sh -
+
+# 4. Configure .env — use Tailscale IP as SERVER_IP
+cat >> .env << EOF
+SERVER_IP=100.64.0.10     # ← your Tailscale IP (100.x.x.x range)
+VPN_PORT=1194
+PORTAL_PORT=8443
+PORTAL_PUBLIC_URL=https://lab.yourdomain.com
+ENABLE_VPN=true
+EOF
+
+# 5. Initialize OpenVPN CA using the Tailscale IP
+./infra/vpn/setup-ca.sh
+# Generated .ovpn files will have Endpoint = 100.64.0.10:1194
+
+# 6. Start portal
+cd infra/portal && docker compose up -d
+```
+
+**Setup (Player / Student side):**
+
+```bash
+# 1. Install Tailscale on their laptop
+# Windows/Mac: https://tailscale.com/download
+# Linux:
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up
+# → they are now on the same Tailscale network as the server
+
+# 2. Download their .ovpn from the portal
+open https://lab.yourdomain.com   # via Cloudflare Tunnel
+
+# 3. Connect
+sudo openvpn student01.ovpn
+# Endpoint resolves to 100.64.0.10 (Tailscale IP) — no open port needed
+```
+
+**`.env` settings:**
+```bash
+SERVER_IP=100.64.0.10          # Tailscale IP of your server
+VPN_PORT=1194
+PORTAL_PORT=8443
+PORTAL_PUBLIC_URL=https://lab.yourdomain.com
+ENABLE_VPN=true
+FLAG_SEED=<random>
+```
+
+**Comparison of all 4 scenarios:**
+
+| | Local Dev | Homelab/VPS | School (Open Port) | School (Outbound-Only) |
+|--|-----------|-------------|-------------------|----------------------|
+| **VPN needed** | No | OpenVPN | OpenVPN | Tailscale + OpenVPN |
+| **Open port required** | No | Yes (UDP 1194) | Yes (UDP approved) | **No** |
+| **Portal access** | localhost | public IP:8443 | public IP:8443 | Cloudflare Tunnel URL |
+| **Player setup** | N/A | `openvpn file.ovpn` | `openvpn file.ovpn` | Install Tailscale + `openvpn` |
+| **Complexity** | ⭐ | ⭐⭐ | ⭐⭐⭐ | ⭐⭐⭐⭐ |
+| **Cost** | Free | Free | Free | Free |
+
+---
+
+
 ## 4. Health-Check & Auto-Recovery System
+
 
 ### 4.1 Per-Container Health Checks
 
@@ -351,14 +734,14 @@ docker compose -f docker-compose.yml -f docker-compose.mips.yml up -d
 | Machine | Gear 1 (Recon) | Gear 2 (Foothold) | Gear 3 (Pivot) | Gear 4 (Root) |
 |---------|---------------|-------------------|----------------|---------------|
 | 09 PressGrave | WPScan finds vuln plugin | SQLi dumps hashes | Theme editor RCE | Docker socket escape |
-| 22 JenkinsOwned | Nmap finds Jenkins | CLI file read leaks keys | Decrypt stored secrets | SSH as root |
-| 37 DirtyPipe | Nmap finds web service | SSRF reaches internal app | SSTI gives low shell | Kernel exploit to root |
+| 23 JenkinsOwned | Nmap finds Jenkins | CLI file read leaks keys | Decrypt stored secrets | SSH as root |
+| 38 DirtyPipe | Nmap finds web service | SSRF reaches internal app | SSTI gives low shell | Kernel exploit to root |
 
 ### 6.2 What Makes It "Creative"
 
 - **Non-obvious pivots**: Machine 19 chains a Python deserialization into a Redis lateral move
 - **Cross-protocol chaining**: Machine 07 chains AJP (binary protocol) with HTTP Tomcat Manager
-- **Data as weapons**: Machine 22 uses leaked cryptographic keys to decrypt other secrets
+- **Data as weapons**: Machine 23 uses leaked cryptographic keys to decrypt other secrets
 - **Environment abuse**: Machine 09 uses Docker itself as the escalation vector
 
 ---
@@ -369,71 +752,213 @@ docker compose -f docker-compose.yml -f docker-compose.mips.yml up -d
 
 | Feature | Approach |
 |---------|----------|
-| **ARM binaries** | `docker buildx` with `--platform linux/arm64` + QEMU user-mode (`qemu-user-static`). Dedicated `docker-compose.arm64.yml` per machine. |
-| **MIPS binaries** | Cross-compilation via `mipsel-linux-gnu-gcc` in build stage. Dedicated `docker-compose.mips.yml` per machine. |
-| **Docker escape** | Intentionally misconfigured containers — **gated behind `--enable-escape-challenges` flag** for host safety |
+| **ARM binaries** | `docker buildx` with `--platform linux/arm64` + QEMU user-mode. Dedicated `k8s.arm64.yaml` per machine. |
+| **MIPS binaries** | Cross-compilation via `mipsel-linux-gnu-gcc` in build stage. Dedicated `k8s.mips.yaml` per machine. |
+| **Docker escape** | Intentionally misconfigured containers — **gated behind admin flag** for host safety |
 | **Sandbox escape** | V8/JSC sandbox bypass as part of browser exploitation chain |
 | **iOS/macOS concepts** | Educational writeups documenting PAC, AMFI, and sandbox differences |
 
-### 7.2 Safety Controls
+### 7.2 Escape Challenge Safety — Kata Containers (Firecracker)
 
-> **⚠️ CAUTION**: Docker escape machines expose **real attack surface** on the host. They MUST run inside a dedicated VM or with strict AppArmor/SELinux profiles.
+Docker/container escape machines are intentionally misconfigured. The question is: *where does the player land after a successful escape?*
+
+**Without Kata (runc):** player escapes → k3s host kernel ← **dangerous**  
+**With Kata Firecracker:** player escapes → Kata microVM guest kernel → KVM boundary ← **host is safe**
+
+```
+Player inside vulnerable Pod
+  → exploits docker.sock / privileged / cgroup escape
+  → lands in Kata Firecracker guest Linux (128MB microVM)
+  → [KVM hypervisor boundary] ← cannot cross this
+  → k3s host node is behind this boundary — fully protected
+```
+
+#### Setup (one-time, server side)
+
+```bash
+# 1. Verify hardware virtualization support
+grep -c "vmx\|svm" /proc/cpuinfo   # must return > 0
+
+# 2. Install Kata Containers + Firecracker backend
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kata-containers/kata-containers/main/utils/kata-manager.sh) install-kata-tools"
+
+# 3. Register RuntimeClass in k3s
+kubectl apply -f - <<EOF
+apiVersion: node.k8s.io/v1
+kind: RuntimeClass
+metadata:
+  name: kata-fc
+handler: kata-fc
+EOF
+
+# 4. Verify
+kubectl run kata-test --image=busybox \
+  --overrides='{"spec":{"runtimeClassName":"kata-fc"}}' \
+  --rm -it -- uname -r
+# Should print Kata guest kernel version, not host kernel
+```
+
+#### Pod Spec — Escape Challenge Machine
+
+```yaml
+# machines/09_pressgrave/k8s.yaml
+spec:
+  runtimeClassName: kata-fc        # ← Firecracker microVM wraps everything
+  containers:
+    - name: pressgrave
+      securityContext:
+        privileged: true           # intentionally exploitable
+      volumeMounts:
+        - name: docker-sock
+          mountPath: /var/run/docker.sock  # Docker escape vector
+  volumes:
+    - name: docker-sock
+      hostPath:
+        path: /var/run/docker.sock  # this is the KATA VM's docker sock, not host
+```
+
+#### Pod Spec — Normal Machine
+
+```yaml
+# machines/01_log4hell/k8s.yaml
+spec:
+  # no runtimeClassName → default runc (no overhead)
+  containers:
+    - name: log4hell
+      securityContext:
+        privileged: false
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+```
+
+#### Isolation Comparison
+
+| | Normal Machine (runc) | Escape Challenge (kata-fc) |
+|--|----------------------|---------------------------|
+| **Container root** | Root inside container only | Root inside container only |
+| **After escape** | Blocked by securityContext | Kata guest kernel (microVM) |
+| **Host reachable?** | No (blocked) | No (KVM boundary) |
+| **Other users' Pods** | No (NetworkPolicy) | No (NetworkPolicy + KVM) |
+| **Overhead** | None | ~128MB RAM, ~150ms startup |
+
+#### Control Summary
 
 | Control | Implementation |
 |---------|---------------|
-| **VM isolation** | Escape machines recommend running inside a throwaway VM |
-| **AppArmor profile** | Custom profile restricting host filesystem access |
-| **Non-root Docker daemon** | Rootless Docker mode for escape challenges |
-| **Network restriction** | Escape machines cannot reach other machines' networks |
+| **Kata runtime** | `runtimeClassName: kata-fc` on escape machine Pods |
+| **Admin gating** | Escape machines disabled by default; enabled per-machine via portal `/admin` |
+| **NetworkPolicy** | Escape Pods also default-deny; only player's VPN IP allowed in |
+| **VT-x requirement** | Kata requires hardware virtualization — documented in setup |
 
----
 
-## 8. Infrastructure Components
+### 8.1 VPN Gateway (OpenVPN — HTB style)
 
-### 8.1 VPN Gateway
+Players receive a personal `.ovpn` file and connect with a single command.
+
+```bash
+# Admin one-time setup
+./infra/vpn/setup-ca.sh          # initializes PKI, starts OpenVPN server
+
+# Per player (auto-generates .ovpn)
+./scripts/add-peer.sh alice      # → infra/vpn/players/alice.ovpn
+
+# Revoke a player instantly
+./scripts/revoke-peer.sh alice   # cert added to CRL, file invalidated
+```
 
 ```yaml
 # infra/vpn/docker-compose.yml
 services:
-  wireguard:
-    image: linuxserver/wireguard
-    cap_add: [NET_ADMIN, SYS_MODULE]
+  openvpn:
+    image: kylemanna/openvpn:latest
+    container_name: lm-vpn-gw
+    cap_add: [NET_ADMIN]
     ports:
-      - "51820:51820/udp"
+      - "${VPN_PORT:-1194}:1194/udp"
     volumes:
-      - ./config:/config
-    networks:
-      - infra_net
+      - ./data:/etc/openvpn
 ```
 
-### 8.2 Web Portal (with Light Gamification)
+Player connects with:
+```bash
+sudo openvpn alice.ovpn   # stays connected, no further setup needed
+```
 
-A lightweight web dashboard with a clean, simple UI and light gamification elements:
+### 8.2 Kubernetes Orchestration (k3s)
 
-**Core Dashboard:**
-- Machine list with live status (🟢 Running / 🔴 Down / 🟡 Resetting)
-- Difficulty ratings and category badges
-- Health check status per machine
-- Connection instructions (IP, ports, VPN config)
-
-**Gamification Features:**
-- **Flag submission** — Players submit flags (user + root) per machine
-- **Point values** — Machines award points based on difficulty (Easy: 10, Medium: 25, Hard: 50, Insane: 100)
-- **Player profile** — Track owned machines, total points, completion percentage
-- **Progress heatmap** — Visual grid showing which machines a player has completed across categories
-- **First blood badge** — Indicator for the first player to submit a valid root flag per machine
-- **No public leaderboard** — Gamification is personal progress only, no competitive ranking (keeps focus on learning)
-
-> The portal is intentionally simple — no user registration database. Players authenticate via a shared secret or VPN certificate identity. It's a flat JSON file backend, not a production SaaS.
-
-### 8.3 Flag Generation
+k3s is the recommended Kubernetes distribution — single binary, minimal overhead, runs on a VPS or dedicated server.
 
 ```bash
-# Each machine generates its flag deterministically:
-FLAG=$(echo -n "${FLAG_SEED}:machine_${MACHINE_ID}" | sha256sum | cut -c1-32)
-echo "FLAG{${FLAG}}" > /root/root.txt
-echo "FLAG{$(echo -n "${FLAG_SEED}:user_${MACHINE_ID}" | sha256sum | cut -c1-32)}" > /home/user/user.txt
+# Install k3s
+curl -sfL https://get.k3s.io | sh -
+
+# Verify
+kubectl get nodes
 ```
+
+**Per-user namespace lifecycle** (managed by the portal backend):
+```bash
+# When user registers
+kubectl create namespace user-alice
+kubectl apply -f infra/k8s/templates/networkpolicy.yaml -n user-alice
+
+# When user spawns a machine
+kubectl apply -f machines/01_WebServer_Runtime/01-log4hell/k8s.yaml -n user-alice
+
+# When user switches machine (previous auto-deleted)
+kubectl delete pod -l user=alice -n user-alice
+kubectl apply -f machines/.../k8s.yaml -n user-alice
+
+# Admin view — all active sessions
+kubectl get pods -A -l managed-by=local-machine
+```
+
+### 8.3 Web Portal (Full-Stack — CTFd-style)
+
+**Not** a simple static page — a full web application with user accounts.
+
+**User-facing features:**
+- **Registration / Login** — email + username, JWT session tokens
+- **Profile page** — download personal `.ovpn`, view stats, change password
+- **Machine dashboard** — browse all 42 machines by category and difficulty
+- **Spawn button** — one click starts machine in user's k8s namespace, shows IP
+- **Flag submission** — paste flag, get points, see correct/wrong feedback
+- **Progress heatmap** — visual grid of owned vs. not-owned machines
+- **Activity feed** — "alice just rooted Log4Hell", "bob got First Blood on GhostCat"
+- **Leaderboard** — public ranking by points (toggle-able by admin)
+- **First blood badge** — per-machine badge for first root submission
+
+**Admin-facing features (at `/admin`):**
+- **User management** — create, suspend, delete accounts
+- **Live cluster view** — see all active Pods per user, kill/restart any
+- **Machine health** — live health check status for all machines
+- **Flag log** — full history of all flag submissions
+- **VPN management** — list peers, revoke, regenerate configs
+
+**Tech stack:**
+| Layer | Technology |
+|-------|-----------|
+| Frontend | Next.js (App Router), Tailwind CSS |
+| Backend API | FastAPI (Python) |
+| Database | PostgreSQL |
+| Auth | JWT (access token + refresh token) |
+| K8s integration | `kubernetes` Python client |
+| VPN integration | Shell exec to `add-peer.sh` / `revoke-peer.sh` |
+
+### 8.4 Flag Generation
+
+Flags are unique **per user per machine** — prevents flag sharing between players.
+
+```bash
+# Each machine generates its flag at Pod startup:
+USER_FLAG=$(echo -n "${FLAG_SEED}:${USER_ID}:user_${MACHINE_ID}" | sha256sum | cut -c1-32)
+ROOT_FLAG=$(echo -n "${FLAG_SEED}:${USER_ID}:root_${MACHINE_ID}" | sha256sum | cut -c1-32)
+echo "FLAG{${USER_FLAG}}" > /home/user/user.txt
+echo "FLAG{${ROOT_FLAG}}" > /root/root.txt
+```
+
+`USER_ID` is injected as an env var into each Pod by the portal backend at spawn time.
 
 ---
 
@@ -442,14 +967,14 @@ echo "FLAG{$(echo -n "${FLAG_SEED}:user_${MACHINE_ID}" | sha256sum | cut -c1-32)
 ### 9.1 Document Matrix
 
 | Document | Audience | Content |
-|----------|----------|---------|
-| `README.md` | Everyone | 30-second overview, quick start, project goals |
-| `docs/01_SETUP.md` | Admin | Prerequisites, installation, first run |
-| `docs/02_ARCHITECTURE.md` | Admin/Dev | Network topology, isolation model, security boundaries |
-| `docs/03_ADMIN_GUIDE.md` | Admin | Day-to-day ops: reset machines, manage health, manage VPN peers |
-| `docs/04_PLAYER_GUIDE.md` | Player | Connect via VPN, pick a machine, methodology guide, flag format |
-| `docs/05_ANONYMOUS_USER.md` | Anyone | Extended idiot-proof README for totally new users |
-| `docs/school_server_deploy/` | School Admin | NAT traversal options, firewall configs |
+|----------|----------|---------| 
+| `README.md` | Everyone | 30-second overview, quick start, server requirements |
+| `docs/01_SETUP.md` | Admin | Install k3s, OpenVPN CA, portal — full server setup |
+| `docs/02_ARCHITECTURE.md` | Admin/Dev | K8s topology, per-user namespace model, security boundaries |
+| `docs/03_ADMIN_GUIDE.md` | Admin | Day-to-day ops: spawn/kill Pods, manage users, VPN, health |
+| `docs/04_PLAYER_GUIDE.md` | Player | Register, download OVPN, connect, pick a machine, methodology |
+
+
 
 ### 9.2 Per-Machine Documentation
 
@@ -457,11 +982,10 @@ Every machine directory contains:
 
 ```
 machines/XX_Category/NN-machine-name/
-├── docker-compose.yml          # Machine definition
 ├── Dockerfile                  # Build instructions
+├── k8s.yaml                    # Kubernetes Pod + Service manifest
 ├── healthcheck.sh              # Health validation script
 ├── config/                     # Service configs, vuln setup scripts
-├── flags/                      # Flag generation script
 ├── README.md                   # Machine card: difficulty, CVE, hints
 └── writeup/
     ├── solution.md             # Full step-by-step walkthrough
@@ -475,36 +999,42 @@ machines/XX_Category/NN-machine-name/
 
 ```
 Local-Machine/
-├── docker-compose.yml                    # Core infra only (VPN + Portal)
-├── run.sh                                # Admin CLI (up/down/reset/status)
+├── run.sh                                # Admin CLI (up/down/reset/status/vpn)
 ├── lifecycle-manager.sh                  # Health-check & auto-recovery daemon
-├── .env                                  # Global config (FLAG_SEED, subnet base)
+├── .env                                  # Global config (FLAG_SEED, SERVER_IP)
 ├── README.md                             # Project overview
-├── LICENSE                               # Open source license
-├── CONTRIBUTING.md                       # How to add new machines
+├── LICENSE
+├── CONTRIBUTING.md
 │
 ├── docs/
-│   ├── 01_SETUP.md
-│   ├── 02_ARCHITECTURE.md
-│   ├── 03_ADMIN_GUIDE.md
-│   ├── 04_PLAYER_GUIDE.md
-│   ├── 05_ANONYMOUS_USER.md
-│   ├── MITRE_ATTACK_MAP.md               # Full ATT&CK coverage visualization
-│   └── school_server_deploy/
-│       ├── Option1_VPN_Allowed.md
-│       └── Option2_Outbound_Only.md
+│   ├── 01_SETUP.md                       # k3s + OpenVPN CA + portal install
+│   ├── 02_ARCHITECTURE.md                # K8s topology, namespace model
+│   ├── 03_ADMIN_GUIDE.md                 # Ops: users, Pods, VPN, health
+│   ├── 04_PLAYER_GUIDE.md                # Register, OVPN, connect, hack
+│   └── MITRE_ATTACK_MAP.md
 │
 ├── infra/
 │   ├── vpn/
-│   │   ├── docker-compose.yml
-│   │   └── config/
+│   │   ├── docker-compose.yml            # OpenVPN (kylemanna/openvpn)
+│   │   ├── setup-ca.sh                   # One-time PKI init
+│   │   ├── data/                         # PKI certs (gitignored)
+│   │   └── players/                      # Generated .ovpn files
 │   ├── portal/
+│   │   ├── frontend/                     # Next.js app
+│   │   ├── backend/                      # FastAPI app
 │   │   ├── docker-compose.yml
-│   │   ├── Dockerfile
-│   │   └── src/
-│   └── shared/
-│       ├── healthcheck-base.sh           # Base health check template
-│       └── flag-generator.sh             # Deterministic flag generation
+│   │   └── k8s/                          # Portal Deployment + Service manifests
+│   └── k8s/
+│       ├── templates/
+│       │   ├── networkpolicy.yaml        # Default deny + lab-only allow
+│       │   └── namespace-rbac.yaml       # Per-user RBAC
+│       └── cluster-setup.sh             # k3s init + base manifests
+│
+├── scripts/
+│   ├── add-peer.sh                       # Generate player .ovpn
+│   ├── revoke-peer.sh                    # Revoke player cert via CRL
+│   ├── generate-all-flags.sh
+│   └── validate-machines.sh
 │
 ├── machines/
 │   ├── 01_WebServer_Runtime/             # Machines 01–07
@@ -715,8 +1245,15 @@ docker compose -f machines/08_Advanced_Exploitation/39-v8-maprem/docker-compose.
 
 | # | Question | Decision | Impact |
 |---|----------|----------|--------|
-| Q1 | Portal: gamification or simple dashboard? | **Simple dashboard + light gamification** — Flag submission, point values per difficulty, personal progress heatmap, first blood badges. No public leaderboard. | Portal design updated in §8.2 |
-| Q2 | Escape challenges: always-on or gated? | **Gated behind `--enable-escape-challenges` flag** — Escape misconfigs are stripped at runtime when flag is not set. Machines still work for primary kill chain. | Safety model updated in §8B, run.sh behavior defined |
-| Q3 | Multi-arch: optional overrides or mandatory? | **Mandatory, separate `docker-compose.{arch}.yml` files** — Each multi-arch machine ships with dedicated override compose files. `qemu-user-static` required on host. | Compose structure updated in §8C, dir structure updated in §10 |
-| Q4 | Browser exploit binaries: pre-built or source? | **Pre-built via GitHub Releases + source build documentation** — Default uses pre-built binaries for fast setup. `BUILD_FROM_SOURCE.md` in each machine's build dir for users who want to compile from vulnerable commits. | Build strategy updated in §8A, dir structure updated in §10 |
-| Q5 | New machine: React2Shell? | **Added as Machine 22 (CVE-2025-55182)** — CVSS 10.0, React Server Components Flight protocol insecure deserialization. Placed in Category 3 (Framework & Library). All subsequent machines renumbered +1. | Machine list updated, numbering shifted across §5, §8B, §8C, §10, §11 |
+| Q1 | Portal: gamification or simple dashboard? | **Full CTFd-style web app** — Registration, JWT auth, OVPN download from profile, machine dashboard with Spawn button, leaderboard, first blood, activity feed. Admin panel at `/admin`. | §8.3 portal spec, §3.5 player flow |
+| Q2 | Escape challenges: always-on or gated? | **Gated — admin enables per-machine via portal** — Escape misconfigs are stripped at runtime by default. Machines still work for primary kill chain without them. | §7.2 safety controls |
+| Q3 | Multi-arch: optional overrides or mandatory? | **Mandatory, separate `k8s.{arch}.yaml` files** — Each multi-arch machine ships with dedicated Kubernetes manifests for ARM/MIPS. | §7.1, dir structure §10 |
+| Q4 | Browser exploit binaries: pre-built or source? | **Pre-built via GitHub Releases + source build documentation** — `BUILD_FROM_SOURCE.md` in each machine's build dir. | §8A, dir structure §10 |
+| Q5 | New machine: React2Shell? | **Added as Machine 22 (CVE-2025-55182)** — CVSS 10.0, React Server Components Flight protocol insecure deserialization. | Machine list §5, §8B |
+| Q6 | Orchestration: Docker Compose vs Kubernetes? | **Kubernetes (k3s)** — Enables true per-user namespace isolation, one-Pod-at-a-time enforcement, and flat resource scaling regardless of user count. Docker Compose remains for local dev only. | §3 entire architecture rewrite |
+| Q7 | VPN: WireGuard vs OpenVPN? | **OpenVPN** — `.ovpn` file is fully self-contained (CA cert + client cert + key in one file). Player runs one command and is connected. Matches HTB UX exactly. Scripts: `setup-ca.sh`, `add-peer.sh`, `revoke-peer.sh`. | §8.1, infra/vpn/ |
+| Q8 | Flag uniqueness: global or per-user? | **Per-user** — `FLAG_SEED + USER_ID + MACHINE_ID` hash. Prevents players sharing flags. Each user's flags are different even on the same machine. | §8.4 flag generation |
+| Q9 | Escape challenge host safety: disposable VM vs. container runtime? | **Kata Containers (Firecracker backend)** — escape challenge Pods use `runtimeClassName: kata-fc`. Player escapes to Kata's microVM guest kernel, not the k3s host. KVM hypervisor boundary is the containment. No separate VM needed. Requires VT-x/AMD-V on server. | §7.2, docs/02_ARCHITECTURE.md, docs/03_ADMIN_GUIDE.md |
+| Q10 | Machine IP assignment: fixed (10.10.x.x) vs dynamic Pod IP? | **Dynamic Pod IP** — k8s assigns IPs from Pod CIDR (10.42.0.0/16). Portal reads live IP post-spawn, stores in DB, displays to user. Zero routing complexity. 50 users running same machine = 50 different IPs, zero config. Refresh auto-respawns crashed Pods with new IP. | §3.2, §3.3 |
+
+

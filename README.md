@@ -1,31 +1,32 @@
-# 🏴 Local-Machine — Advanced Red Team Lab
+# 🏴 Local-Machine — Self-Hosted Red Team Training Platform
 
-> **42 isolated, multi-step challenge machines** built on critical/high-severity CVEs.  
-> Each machine enforces a realistic **MITRE ATT&CK kill chain** where every step is a hard dependency for the next.  
-> Inspired by **DEFCON CTF Finals, HITCON CTF Finals, BlackHat CTF Finals**.
+> A **HackTheBox-style server platform** you deploy on your own dedicated server.  
+> Players register on the web portal, download a personal `.ovpn` file, connect once, and get full access to **42 isolated challenge machines** built on real Critical/High CVEs.  
+> Designed for red team learners who need a **safe, unrestricted environment** — run `nmap`, brute-force, use Metasploit freely. No rate limits. No bans.
 
 ---
 
 ## 🚀 Quick Start
 
 ```bash
-# 1. Clone the repository
-git clone https://github.com/your-org/Local-Machine.git
-cd Local-Machine
+# 1. Install k3s (Kubernetes)
+curl -sfL https://get.k3s.io | sh -
 
-# 2. Configure your lab
+# 2. Configure
 cp .env.example .env
-nano .env  # Set FLAG_SEED and PORTAL_SECRET
+nano .env   # Set SERVER_IP, FLAG_SEED, PORTAL_SECRET
 
-# 3. Generate flags
-./scripts/generate-all-flags.sh
+# 3. Initialize OpenVPN CA (one-time)
+./infra/vpn/setup-ca.sh
 
 # 4. Start the lab
 ./run.sh up
 
-# 5. Access the dashboard
-# https://localhost:8443
+# 5. Access the portal
+# https://<your-server-ip>:8443
 ```
+
+---
 
 ## 📋 What's Inside
 
@@ -40,52 +41,76 @@ nano .env  # Set FLAG_SEED and PORTAL_SECRET
 | ⬆️ Privilege Escalation | 36–38 | sudo (Baron Samedit), polkit (PwnKit), kernel (Dirty Pipe) |
 | 💀 Advanced Exploitation | 39–42 | V8 JIT, WebKit/JSC, ARM shellcode, sandbox escape |
 
+---
+
 ## 🔒 Security Model
 
-- **Network Isolation**: Each machine runs in its own Docker bridge network (`10.10.{N}.0/24`)
-- **No Shared State**: Machines cannot communicate with each other
-- **Deterministic Flags**: Flags are generated from `FLAG_SEED` — change the seed, change all flags
-- **Auto-Recovery**: Lifecycle manager resets machines every 60 minutes
-- **Escape Challenges**: Docker/container escapes are **gated** behind `--enable-escape-challenges` flag
+| Layer | Mechanism |
+|-------|-----------|
+| **Per-user isolation** | Each player gets a dedicated Kubernetes namespace — zero cross-user traffic |
+| **Dynamic Pod IPs** | Each machine spawn gets a unique IP; portal displays it live; no routing conflict |
+| **NetworkPolicy** | Default-deny per namespace; only the player's VPN IP is allowed in |
+| **Ephemeral storage** | All machine state wiped on Pod death — no data leaks between sessions |
+| **Unique flags** | `sha256(FLAG_SEED + USER_ID + MACHINE_ID)` — flag sharing between players doesn't work |
+| **Escape challenge isolation** | Docker/container escape machines run under **Kata Containers (Firecracker)** — escape lands in a microVM, never on the host |
+| **Auto-recovery** | Portal detects crashed Pods on page refresh and auto-respawns them |
+
+---
 
 ## 🏗️ Architecture
 
 ```
-Player VPN ──▶ WireGuard Gateway ──▶ Docker Bridge Router ──▶ 42 Isolated Machines
-                                  ──▶ Web Portal (Dashboard + Gamification)
+Player → register on portal → download .ovpn → sudo openvpn user.ovpn
+       → dashboard → Spawn machine → Pod starts in ns:user-<name>
+       → portal shows Pod IP → hack away
+       → submit flag → earn points
+
+Kubernetes Cluster:
+  ns:user-alice  [one Pod, dynamic IP]   ← alice's machine
+  ns:user-bob    [one Pod, dynamic IP]   ← bob's machine
+  (NetworkPolicy: namespaces are fully isolated)
+
+Escape challenges → Kata Firecracker runtime → escape lands in microVM, not host
 ```
+
+---
 
 ## 📖 Documentation
 
-- [Setup Guide](docs/01_SETUP.md)
-- [Architecture](docs/02_ARCHITECTURE.md)
-- [Admin Guide](docs/03_ADMIN_GUIDE.md)
-- [Player Guide](docs/04_PLAYER_GUIDE.md)
-- [Anonymous User Guide](docs/05_ANONYMOUS_USER.md)
+- [Setup Guide](docs/01_SETUP.md) — k3s, OpenVPN CA, Kata Containers, portal install
+- [Architecture](docs/02_ARCHITECTURE.md) — k8s topology, isolation model, security layers
+- [Admin Guide](docs/03_ADMIN_GUIDE.md) — manage users, Pods, VPN peers, escape challenges
+- [Player Guide](docs/04_PLAYER_GUIDE.md) — register, connect, hack, submit flags
 - [MITRE ATT&CK Map](docs/MITRE_ATTACK_MAP.md)
 
-## 🎮 Gamification
+---
 
-The web portal includes light gamification:
-- 🏴 **Flag submission** — Submit user + root flags per machine
-- ⚡ **Points** — Easy: 10, Medium: 25, Hard: 50, Insane: 100
-- 📊 **Progress heatmap** — Visual grid of your conquests
-- 🩸 **First blood badges** — First player to root a machine
-- 👤 **Player profiles** — Track owned machines and total progress
+## 🎮 Platform Features
+
+- 🔐 **Web registration** — players sign up, portal auto-provisions their k8s namespace
+- 📥 **OVPN download** — one `.ovpn` file from profile page, one command to connect
+- 🖱️ **Spawn button** — one-click machine start, IP shown immediately
+- 🔄 **Refresh-to-fix** — broken machine? refresh the page, portal auto-respawns it
+- 🏴 **Flag submission** — per-user unique flags, submit via dashboard
+- ⚡ **Points & Ranks** — Easy: 10, Medium: 25, Hard: 50, Insane: 100
+- 🩸 **First blood badges** — first player to root each machine
+- 📊 **Leaderboard & Activity feed** — CTFd-style live activity
+
+---
 
 ## 🛠️ Admin CLI
 
 ```bash
-./run.sh up                           # Start the lab
-./run.sh up --enable-escape-challenges # Start with Docker escape challenges (VM only!)
-./run.sh down                         # Stop everything
-./run.sh reset 01                     # Reset machine 01
-./run.sh reset all                    # Reset all machines
-./run.sh status                       # Machine status overview
-./run.sh health 01                    # Health check machine 01
-./run.sh logs 01                      # View machine 01 logs
-./run.sh vpn-add player4              # Add VPN peer
+./run.sh up                    # Start the lab (VPN + portal + k3s)
+./run.sh down                  # Stop everything
+./run.sh status                # Live Pod status per user
+./run.sh health 01             # Health check machine 01
+./run.sh logs 01               # View machine 01 logs
+./scripts/add-peer.sh alice    # Generate alice.ovpn
+./scripts/revoke-peer.sh alice # Revoke alice's VPN access
 ```
+
+---
 
 ## 📜 License
 
@@ -94,7 +119,3 @@ MIT License — See [LICENSE](LICENSE)
 ## 🤝 Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md)
-
-## For More Specific Information
-
-See [docs/](docs/)

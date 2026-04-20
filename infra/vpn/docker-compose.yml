@@ -1,38 +1,30 @@
 # ──────────────────────────────────────────────────────
-# Local-Machine — VPN Gateway (WireGuard)
+# Local-Machine — VPN Gateway (OpenVPN)
 # ──────────────────────────────────────────────────────
-# Standalone compose file for the VPN gateway.
-# Used by run.sh to manage VPN independently.
+# HTB-style: players receive a .ovpn file and connect
+# with:  sudo openvpn player.ovpn
+#
+# One-time setup:  ./infra/vpn/setup-ca.sh
+# Add player:      ./scripts/add-peer.sh <name>
 # ──────────────────────────────────────────────────────
 
 services:
-  wireguard:
-    image: linuxserver/wireguard:latest
+  openvpn:
+    image: kylemanna/openvpn:latest
     container_name: lm-vpn-gw
     cap_add:
       - NET_ADMIN
-      - SYS_MODULE
     environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=UTC
-      - SERVERURL=auto
-      - SERVERPORT=${VPN_PORT:-51820}
-      - PEERS=player1,player2,player3,player4,player5
-      - PEERDNS=auto
-      - INTERNAL_SUBNET=${VPN_SUBNET:-10.10.254.0/24}
-      - ALLOWEDIPS=10.10.0.0/16
+      - DEBUG=0
     ports:
-      - "${VPN_PORT:-51820}:51820/udp"
+      - "${VPN_PORT:-1194}:1194/udp"
     volumes:
-      - ./config:/config
-      - /lib/modules:/lib/modules:ro
+      - ./data:/etc/openvpn
     sysctls:
-      - net.ipv4.conf.all.src_valid_mark=1
       - net.ipv4.ip_forward=1
     restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "wg show wg0 2>/dev/null || exit 1"]
+      test: ["CMD-SHELL", "pgrep openvpn || exit 1"]
       interval: 30s
       timeout: 5s
       retries: 3

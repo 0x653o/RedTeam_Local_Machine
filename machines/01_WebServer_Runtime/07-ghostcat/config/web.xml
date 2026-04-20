@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    web.xml for the GhostCat target webapp (/app)
+
+    VULNERABILITY: This file is readable via the AJP file-read bug
+    (CVE-2020-1938). The Ghostcat tool reads WEB-INF/web.xml via AJP
+    and leaks the adminPassword init-param below.
+
+    Players use: python3 exploit.py --target 10.10.7.10 --file /WEB-INF/web.xml
+-->
+<web-app xmlns="http://xmlns.jcp.org/xml/ns/javaee"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://xmlns.jcp.org/xml/ns/javaee
+             http://xmlns.jcp.org/xml/ns/javaee/web-app_3_1.xsd"
+         version="3.1">
+
+    <display-name>Internal Management App</display-name>
+
+    <servlet>
+        <servlet-name>MainServlet</servlet-name>
+        <servlet-class>org.apache.catalina.servlets.DefaultServlet</servlet-class>
+        <init-param>
+            <param-name>debug</param-name>
+            <param-value>0</param-value>
+        </init-param>
+        <!-- CREDENTIAL LEAK: Admin password stored in plaintext init-param -->
+        <init-param>
+            <param-name>adminUser</param-name>
+            <param-value>tomcatadmin</param-value>
+        </init-param>
+        <init-param>
+            <param-name>adminPassword</param-name>
+            <param-value>GhostC4t2020!</param-value>
+        </init-param>
+        <load-on-startup>1</load-on-startup>
+    </servlet>
+
+    <servlet-mapping>
+        <servlet-name>MainServlet</servlet-name>
+        <url-pattern>/</url-pattern>
+    </servlet-mapping>
+
+    <welcome-file-list>
+        <welcome-file>index.jsp</welcome-file>
+    </welcome-file-list>
+
+</web-app>

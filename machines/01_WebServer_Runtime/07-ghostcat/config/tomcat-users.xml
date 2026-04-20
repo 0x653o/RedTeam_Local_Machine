@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!--
+    tomcat-users.xml — credentials for Tomcat Manager app
+    
+    These credentials match the adminPassword in WEB-INF/web.xml.
+    After reading web.xml via Ghostcat, players use these to log in
+    to /manager/text/ and deploy a malicious WAR file.
+-->
+<tomcat-users xmlns="http://tomcat.apache.org/xml"
+              xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+              xsi:schemaLocation="http://tomcat.apache.org/xml tomcat-users.xsd"
+              version="1.0">
+
+    <!-- Manager credentials — leaked via Ghostcat AJP file read -->
+    <role rolename="manager-gui"/>
+    <role rolename="manager-script"/>
+    <role rolename="manager-jmx"/>
+    <role rolename="manager-status"/>
+    <user username="tomcatadmin"
+          password="GhostC4t2020!"
+          roles="manager-gui,manager-script,manager-jmx,manager-status"/>
+
+</tomcat-users>

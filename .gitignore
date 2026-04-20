@@ -15,10 +15,14 @@ infra/portal/data/
 infra/portal/src/data/
 infra/portal/node_modules/
 
-# VPN configs (contain private keys)
+# VPN — OpenVPN PKI data and generated .ovpn files (contain private keys)
+infra/vpn/data/
+infra/vpn/players/
+# Legacy WireGuard paths (kept for reference)
 infra/vpn/config/peer_*/
 infra/vpn/config/wg0.conf
 infra/vpn/config/coredns/
+
 
 # Logs
 *.log

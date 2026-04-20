@@ -1,0 +1,144 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lm-portal
+  namespace: lm-system
+  labels:
+    app: lm-portal
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lm-portal
+  template:
+    metadata:
+      labels:
+        app: lm-portal
+    spec:
+      serviceAccountName: lm-portal-backend
+      containers:
+        - name: frontend
+          image: local-machine/portal-frontend:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              value: "http://localhost:8000"
+            - name: PORTAL_PUBLIC_URL
+              valueFrom:
+                configMapKeyRef:
+                  name: lm-config
+                  key: portal-public-url
+        - name: backend
+          image: local-machine/portal-backend:latest
+          ports:
+            - containerPort: 8000
+          env:
+            - name: FLAG_SEED
+              valueFrom:
+                secretKeyRef:
+                  name: lm-secrets
+                  key: flag-seed
+            - name: PORTAL_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: lm-secrets
+                  key: portal-secret
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: lm-secrets
+                  key: database-url
+            - name: K8S_NAMESPACE_PREFIX
+              value: "user-"
+            - name: VPN_PLAYERS_DIR
+              value: "/vpn/players"
+          volumeMounts:
+            - name: vpn-players
+              mountPath: /vpn/players
+      volumes:
+        - name: vpn-players
+          hostPath:
+            path: /opt/local-machine/infra/vpn/players   # where .ovpn files are stored
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lm-portal
+  namespace: lm-system
+spec:
+  selector:
+    app: lm-portal
+  ports:
+    - name: https
+      port: 8443
+      targetPort: 3000
+      nodePort: 30443
+  type: NodePort
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lm-portal-db
+  namespace: lm-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lm-portal-db
+  template:
+    metadata:
+      labels:
+        app: lm-portal-db
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:16-alpine
+          env:
+            - name: POSTGRES_DB
+              value: localmachine
+            - name: POSTGRES_USER
+              value: portal
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lm-secrets
+                  key: db-password
+          ports:
+            - containerPort: 5432
+          volumeMounts:
+            - name: pgdata
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: pgdata
+          persistentVolumeClaim:
+            claimName: lm-portal-db-pvc
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: lm-portal-db-pvc
+  namespace: lm-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: lm-portal-db
+  namespace: lm-system
+spec:
+  selector:
+    app: lm-portal-db
+  ports:
+    - port: 5432
+      targetPort: 5432
+  type: ClusterIP

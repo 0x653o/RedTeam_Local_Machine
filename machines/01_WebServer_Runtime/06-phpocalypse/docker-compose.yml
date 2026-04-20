@@ -1,18 +1,47 @@
+# ──────────────────────────────────────────────────────
+# Machine 06: PHPocalypse — CVE-2012-1823
+# CVSS: 9.8 | Category: Web Server & Runtime
+# Kill Chain: nmap → PHP-CGI port 80 → ?-s source leak
+#             → argument injection RCE → writable cron → root
+# ──────────────────────────────────────────────────────
+
 services:
   phpocalypse:
-    build: { context: ., dockerfile: Dockerfile }
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: lm-06-phpocalypse
     hostname: phpocalypse
-    environment: [ "FLAG_SEED=${FLAG_SEED:-default-seed}", "MACHINE_ID=06" ]
-    networks: { machine_06_net: { ipv4_address: 10.10.6.10 } }
+    environment:
+      - FLAG_SEED=${FLAG_SEED:-default-seed}
+      - MACHINE_ID=06
+    networks:
+      machine_06_net:
+        ipv4_address: 10.10.6.10
+    ports: []
     restart: unless-stopped
-    mem_limit: 512m
-    cpus: 1.0
-    pids_limit: 256
-    security_opt: [ "no-new-privileges:false" ]
-    healthcheck: { test: ["CMD-SHELL", "/healthcheck.sh"], interval: 30s, timeout: 10s, retries: 3, start_period: 60s }
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    security_opt:
+      - no-new-privileges:false
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - SETUID
+      - SETGID
+    healthcheck:
+      test: ["CMD-SHELL", "/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
 networks:
   machine_06_net:
     driver: bridge
-    ipam: { config: [{ subnet: 10.10.6.0/24, gateway: 10.10.6.1 }] }
+    ipam:
+      config:
+        - subnet: 10.10.6.0/24
+          gateway: 10.10.6.1

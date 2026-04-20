@@ -14,7 +14,7 @@ ENV DEBIAN_FRONTEND=noninteractive
 
 # ── System setup ──────────────────────────────────────
 RUN apt-get update && apt-get install -y \
-    openjdk-11-jdk-headless \
+    openjdk-8-jdk-headless \
     curl \
     wget \
     netcat-openbsd \
@@ -35,12 +35,10 @@ RUN useradd -m -s /bin/bash user && \
 # ── Install vulnerable Log4j application ─────────────
 WORKDIR /opt/webapp
 
-# Download vulnerable Log4j 2.14.1
-RUN mkdir -p /opt/webapp/lib && \
-    wget -q "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-core/2.14.1/log4j-core-2.14.1.jar" \
-        -O /opt/webapp/lib/log4j-core-2.14.1.jar && \
-    wget -q "https://repo1.maven.org/maven2/org/apache/logging/log4j/log4j-api/2.14.1/log4j-api-2.14.1.jar" \
-        -O /opt/webapp/lib/log4j-api-2.14.1.jar
+# Copy locally bundled Log4j 2.14.1
+RUN mkdir -p /opt/webapp/lib
+COPY config/lib/log4j-core-2.14.1.jar /opt/webapp/lib/
+COPY config/lib/log4j-api-2.14.1.jar /opt/webapp/lib/
 
 # Copy vulnerable application
 COPY config/VulnApp.java /opt/webapp/VulnApp.java
