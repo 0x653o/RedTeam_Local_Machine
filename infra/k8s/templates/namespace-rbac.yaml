@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# infra/k8s/templates/namespace-rbac.yaml
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lm-user-role
+  namespace: placeholder
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lm-user-rolebinding
+  namespace: placeholder
+subjects:
+  - kind: ServiceAccount
+    name: lm-user
+    namespace: placeholder
+roleRef:
+  kind: Role
+  name: lm-user-role
+  apiGroup: rbac.authorization.k8s.io

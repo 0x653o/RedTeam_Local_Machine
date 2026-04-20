@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Allow manager access from any IP (needed for lab use) -->
+<Context antiResourceLocking="false" privileged="true" >
+  <Valve className="org.apache.catalina.valves.RemoteAddrValve"
+         allow=".*" />
+</Context>

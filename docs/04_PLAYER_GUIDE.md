@@ -2,101 +2,150 @@
 
 ## Getting Started
 
-### 1. Connect via VPN
+### Step 1 — Register
 
-Your admin will provide a WireGuard configuration file.
+Visit the portal URL your admin gave you:
+
+```
+https://<server-ip>:8443
+```
+
+Click **Register**, enter your username and email. Your account is created immediately.
+
+---
+
+### Step 2 — Download Your VPN File
+
+1. Go to your **Profile** page (top-right)
+2. Click **Download VPN**
+3. Save the file: `yourname.ovpn`
+
+This file is unique to you — it contains your personal certificate. **Do not share it.**
+
+---
+
+### Step 3 — Connect to VPN
 
 ```bash
-# Install WireGuard
-sudo apt-get install wireguard
+# Linux / macOS
+sudo openvpn yourname.ovpn
 
-# Import config
-sudo cp player.conf /etc/wireguard/lm.conf
+# Windows
+# Install OpenVPN GUI → import yourname.ovpn → Connect
 
-# Connect
-sudo wg-quick up lm
-
-# Verify
-ping 10.10.0.3  # Should reach the portal
+# Verify connection
+ping <server-ip>   # should respond
 ```
 
-### 2. Access the Dashboard
+Keep this terminal open. The VPN must stay connected while you hack.
 
-Open your browser and navigate to:
+---
+
+### Step 4 — Spawn a Machine
+
+1. Open the **Dashboard**
+2. Browse machines by category and difficulty
+3. Click a machine → click **Spawn**
+4. Wait a few seconds — your machine's IP appears on the card
+
 ```
-https://10.10.0.3:8443
+Log4Hell is running
+IP: 10.42.0.31    ← this is your personal machine IP
 ```
 
-Login with:
-- **Player ID**: Your chosen handle
-- **Lab Secret**: Provided by your admin
+> Every player gets a **separate, independent instance** of the machine. Your actions don't affect other players' machines.
 
-### 3. Pick a Machine
+---
 
-Machines are organized by category and difficulty:
+### Step 5 — Start Hacking
 
-| Difficulty | Points | Recommended For |
-|------------|--------|----------------|
-| 🟢 Easy | 10 pts | Beginners, warmup |
-| 🟡 Medium | 25 pts | Intermediate |
-| 🔴 Hard | 50 pts | Advanced |
-| 💀 Insane | 100 pts | Expert only |
+```bash
+# Recon — always start here
+nmap -sC -sV -p- <your-machine-ip>
+```
 
-**Start with Easy machines** to learn the lab workflow.
+No restrictions. Run `nmap`, `hydra`, `sqlmap`, `metasploit`, `ffuf` — whatever you need.
+
+---
+
+### Step 6 — Submit Flags
+
+Flags are inside the machine:
+- User flag: `/home/user/user.txt`
+- Root flag: `/root/root.txt`
+
+Format: `FLAG{32_hex_characters}`
+
+Submit via the dashboard:
+1. Click the machine card
+2. Paste your flag in the submission box
+3. Click **Submit**
+
+> Flags are unique per player — you cannot use someone else's flag.
+
+---
+
+### Refresh = Fix
+
+If your machine crashes or becomes unreachable:
+1. **Refresh the dashboard page**
+2. The portal detects the issue and auto-respawns your machine
+3. A new IP is shown — continue from there
+
+No need to contact the admin for crashed machines.
+
+---
+
+## Switching Machines
+
+Click a different machine on the dashboard → click **Spawn**.  
+Your current machine is **automatically terminated** and a new one starts.  
+You can only have one active machine at a time.
+
+---
 
 ## Methodology
 
-Every machine follows a 4-step kill chain:
+Every machine follows a 4-step kill chain. You **cannot skip steps** — each gate depends on completing the previous one.
 
-### Step 1: Reconnaissance (GATE 0)
+### Step 1 — Reconnaissance (Gate 0)
 ```bash
-nmap -sC -sV -p- 10.10.{N}.10
+nmap -sC -sV -p- <machine-ip>
 ```
-- Identify open ports
-- Determine service versions
-- OS fingerprinting
+Identify open ports, service versions, OS.
 
-### Step 2: Enumeration (GATE 1)
+### Step 2 — Enumeration (Gate 1)
 - Research identified services for known CVEs
-- Confirm vulnerability version
+- Confirm vulnerable version
 - Map the attack surface
-- Tools: `nikto`, `gobuster`, `wpscan`, etc.
+- Tools: `nikto`, `gobuster`, `wpscan`, `feroxbuster`
 
-### Step 3: Exploitation (GATE 2)
+### Step 3 — Exploitation (Gate 2)
 - Exploit the initial vulnerability
-- Get a shell or access
-- Find and capture the **user flag** (`/home/user/user.txt`)
+- Get shell / access
+- Capture **user flag** at `/home/user/user.txt`
 
-### Step 4: Post-Exploitation (GATE 3)
+### Step 4 — Post-Exploitation (Gate 3)
 - Enumerate privilege escalation vectors
 - SUID binaries, cron jobs, sudo misconfigs, kernel vulns
 - Escalate to root
-- Capture the **root flag** (`/root/root.txt`)
+- Capture **root flag** at `/root/root.txt`
 
-## Flag Format
+---
 
-```
-FLAG{32_character_hex_string}
-```
-
-Example: `FLAG{a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6}`
-
-## Submitting Flags
-
-### Via Dashboard
-1. Navigate to the Dashboard
-2. Select the machine from the dropdown
-3. Paste the flag
-4. Click Submit
-
-### Points System
+## Points & Ranks
 
 | Flag Type | Points |
 |-----------|--------|
-| User flag | 40% of machine points |
-| Root flag | 60% of machine points |
+| User flag | 40% of machine value |
+| Root flag | 60% of machine value |
 
-### Ranks
+| Difficulty | Machine Value |
+|------------|--------------|
+| 🟢 Easy | 10 pts |
+| 🟡 Medium | 25 pts |
+| 🔴 Hard | 50 pts |
+| 💀 Insane | 100 pts |
 
 | Points | Rank |
 |--------|------|
@@ -109,27 +158,33 @@ Example: `FLAG{a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6}`
 | 700–999 | 💀 Exploit Developer |
 | 1000+ | 🏴 Elite Hacker |
 
+---
+
 ## Tips
 
-1. **Read the machine README** — Each machine has hints
-2. **Take notes** — Document every step for learning
-3. **Try before looking at writeups** — The struggle is the learning
-4. **Use the right tools** — `nmap`, `burpsuite`, `metasploit`, `linpeas`
-5. **Google the CVE** — Real advisories have exploitation details
-6. **Check SUID binaries** — `find / -perm -u=s -type f 2>/dev/null`
-7. **Machines reset every 60 minutes** — Save your progress!
+1. **Read the machine README** — Each machine has difficulty rating, CVE hint, and methodology hint
+2. **Nmap everything** — Version detection (`-sV`) reveals the vulnerable service version
+3. **Google the CVE** — The official advisory often links to a PoC
+4. **`linpeas.sh` for privesc** — Uploads it to the machine after getting user shell
+5. **Take notes** — You will want to reference your own steps later
+6. **Try before writeups** — The struggle is the actual learning
+7. **Machines reset every 60 minutes** — Note your progress before reset
 
-## Machine IPs
+---
 
-All machines follow the pattern: `10.10.{MACHINE_ID}.10`
+## FAQ
 
-| ID Range | Category | IP Range |
-|----------|----------|----------|
-| 01–07 | Web Server & Runtime | 10.10.1.10 – 10.10.7.10 |
-| 08–14 | CMS & Web Application | 10.10.8.10 – 10.10.14.10 |
-| 15–22 | Framework & Library | 10.10.15.10 – 10.10.22.10 |
-| 23–28 | Enterprise Middleware | 10.10.23.10 – 10.10.28.10 |
-| 29–32 | Network Appliance & Proxy | 10.10.29.10 – 10.10.32.10 |
-| 33–35 | Data & File Transfer | 10.10.33.10 – 10.10.35.10 |
-| 36–38 | Privilege Escalation | 10.10.36.10 – 10.10.38.10 |
-| 39–42 | Advanced Exploitation | 10.10.39.10 – 10.10.42.10 |
+**Q: My machine IP changed after a refresh — is that normal?**  
+A: Yes. If the machine crashed and was respawned, it gets a new IP. Update your terminal.
+
+**Q: Can I see other players' machines?**  
+A: No. Network isolation (Kubernetes NetworkPolicy) ensures your VPN traffic only reaches your own machines.
+
+**Q: Someone submitted my flag?**  
+A: Not possible — flags are unique per player. `sha256(seed + your_user_id + machine_id)`.
+
+**Q: Can I run scripts that generate a lot of traffic?**  
+A: Yes. This platform is specifically designed to allow heavy scanning, brute-forcing, and exploit traffic. Go for it.
+
+**Q: What happens to my progress when a machine resets?**  
+A: Submitted flags are saved in the portal permanently. Only the machine container is reset — your points remain.
