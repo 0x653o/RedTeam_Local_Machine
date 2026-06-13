@@ -119,3 +119,8 @@ MIT License — See [LICENSE](LICENSE)
 ## 🤝 Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md)
+
+---
+
+# Development on this repository has been suspended because the development strategy has shifted from using Docker to issuing multi-VM instances and managing them by linking the issued VMs via SPNs.
+## For more details on this change, please refer to https://attackevals.github.io/ael/.
